@@ -3,7 +3,6 @@ import {
   QrCode,
   Clock3,
   MapPin,
-  Truck,
   Store,
   Camera,
   LocateFixed,
@@ -12,10 +11,13 @@ import {
   FileDown,
   CircleAlert,
   AlertTriangle,
+  ClipboardCheck,
 } from 'lucide-react'
 
-type TabKey = 'driver' | 'history' | 'success' | 'records'
+type DesktopTabKey = 'driver' | 'history' | 'success' | 'records'
+type MobileTabKey = 'driver' | 'success' | 'recent'
 type ExportPeriod = 'day' | 'week' | 'month'
+type DelayStatus = '未迟到' | '迟到' | '待人工判断'
 
 type StoreItem = {
   id: string
@@ -44,6 +46,9 @@ type RecordItem = {
   latestArrivalTime: string
   isLate: boolean
   lateMinutes: number
+  ruleMatched: boolean
+  needManualReview: boolean
+  delayStatus: DelayStatus
 }
 
 type ArrivalRule = {
@@ -264,6 +269,8 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid #cbd5e1',
   borderRadius: 10,
   boxSizing: 'border-box',
+  fontSize: 16,
+  minHeight: 44,
 }
 
 const buttonStyle = (primary = true): React.CSSProperties => ({
@@ -274,27 +281,66 @@ const buttonStyle = (primary = true): React.CSSProperties => ({
   color: primary ? '#fff' : '#0f172a',
   cursor: 'pointer',
   fontWeight: 600,
+  minHeight: 44,
 })
 
+function MobileRecordCard({ record }: { record: RecordItem }) {
+  const judgeColor =
+    record.delayStatus === '迟到'
+      ? '#dc2626'
+      : record.delayStatus === '待人工判断'
+      ? '#92400e'
+      : '#166534'
+
+  return (
+    <div style={{ ...box, padding: 14 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+        <div style={{ fontWeight: 700 }}>{record.store}</div>
+        <div style={{ color: judgeColor, fontWeight: 700 }}>{record.delayStatus === '迟到' ? `迟到 ${record.lateMinutes} 分钟` : record.delayStatus}</div>
+      </div>
+      <div style={{ display: 'grid', gap: 6, color: '#334155', fontSize: 14, lineHeight: 1.7 }}>
+        <div><span style={{ color: '#64748b' }}>供应商：</span>{record.supplier}</div>
+        <div><span style={{ color: '#64748b' }}>打卡时间：</span>{record.time}</div>
+        <div><span style={{ color: '#64748b' }}>送货品类：</span>{record.category}</div>
+        <div><span style={{ color: '#64748b' }}>批次：</span>{record.batch}</div>
+        <div><span style={{ color: '#64748b' }}>定位：</span>{record.geoPassed ? `通过（${record.distance}米）` : '未通过'}</div>
+        <div><span style={{ color: '#64748b' }}>规则状态：</span>{record.ruleMatched ? '已匹配' : '未匹配'}</div>
+        <div><span style={{ color: '#64748b' }}>状态：</span>{record.status}</div>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
-  const [tab, setTab] = useState<TabKey>('driver')
+  const initialWidth = typeof window !== 'undefined' ? window.innerWidth : 1200
+  const [screenWidth, setScreenWidth] = useState<number>(initialWidth)
+  const isMobile = screenWidth < 768
+
+  const [desktopTab, setDesktopTab] = useState<DesktopTabKey>('driver')
+  const [mobileTab, setMobileTab] = useState<MobileTabKey>('driver')
+
   const [selectedStoreId, setSelectedStoreId] = useState('qz1')
   const [storeLocked, setStoreLocked] = useState(false)
-  const [supplier, setSupplier] = useState('')
+
+  const [currentSupplier, setCurrentSupplier] = useState('')
   const [category, setCategory] = useState('')
   const [deliveryBatch, setDeliveryBatch] = useState('上午批次')
+
   const [distance, setDistance] = useState<number | null>(null)
   const [geoPassed, setGeoPassed] = useState(false)
   const [locationMessage, setLocationMessage] = useState('')
   const [useMockLocation, setUseMockLocation] = useState(true)
   const [mockLng, setMockLng] = useState('119.341179')
   const [mockLat, setMockLat] = useState('26.053821')
+
   const [photoUploaded, setPhotoUploaded] = useState(false)
   const [exceptionReason, setExceptionReason] = useState('')
   const [exceptionRemark, setExceptionRemark] = useState('')
+
   const [historyKeyword, setHistoryKeyword] = useState('')
   const [historySupplier, setHistorySupplier] = useState('all')
   const [lastRecord, setLastRecord] = useState<RecordItem | null>(null)
+
   const [records, setRecords] = useState<RecordItem[]>([
     {
       id: 'REC-20260406-001',
@@ -314,9 +360,56 @@ export default function App() {
       latestArrivalTime: '08:30',
       isLate: true,
       lateMinutes: 113,
+      ruleMatched: true,
+      needManualReview: false,
+      delayStatus: '迟到',
     },
     {
       id: 'REC-20260406-002',
+      date: '2026-04-06',
+      time: '2026-04-06 08:15:00',
+      store: '福州三店',
+      supplier: '建伟水产摊',
+      category: '活鲜',
+      batch: '上午批次',
+      geoPassed: true,
+      distance: 35,
+      photoUploaded: true,
+      exceptionReason: '',
+      exceptionRemark: '临时补货供应商',
+      status: '已打卡',
+      normalArrivalTime: '-',
+      latestArrivalTime: '-',
+      isLate: false,
+      lateMinutes: 0,
+      ruleMatched: false,
+      needManualReview: true,
+      delayStatus: '待人工判断',
+    },
+    {
+      id: 'REC-20260406-003',
+      date: '2026-04-06',
+      time: '2026-04-06 08:34:00',
+      store: '三明一店',
+      supplier: '志中海鲜批发',
+      category: '活鲜',
+      batch: '上午批次',
+      geoPassed: true,
+      distance: 26,
+      photoUploaded: true,
+      exceptionReason: '',
+      exceptionRemark: '',
+      status: '已打卡',
+      normalArrivalTime: '9:00',
+      latestArrivalTime: '09:00',
+      isLate: false,
+      lateMinutes: 0,
+      ruleMatched: true,
+      needManualReview: false,
+      delayStatus: '未迟到',
+    },
+    {
+      id: 'REC-20260406-004',
       date: '2026-04-06',
       time: '2026-04-06 11:12:44',
       store: '福州一店',
@@ -325,27 +418,53 @@ export default function App() {
       batch: '上午批次',
       geoPassed: true,
       distance: 41,
-      photoUploaded: false,
-      exceptionReason: '信息填写错误',
-      exceptionRemark: '批次信息补录',
-      status: '异常待处理',
+      photoUploaded: true,
+      exceptionReason: '',
+      exceptionRemark: '',
+      status: '已打卡',
       normalArrivalTime: '-',
       latestArrivalTime: '-',
       isLate: false,
       lateMinutes: 0,
+      ruleMatched: false,
+      needManualReview: true,
+      delayStatus: '待人工判断',
     },
   ])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     const storeFromUrl = params.get('store')
-    if (!storeFromUrl) return
+    const viewFromUrl = params.get('view')
 
-    const matchedStore = stores.find((item) => item.id === storeFromUrl)
-    if (matchedStore) {
-      setSelectedStoreId(matchedStore.id)
-      setStoreLocked(true)
+    if (storeFromUrl) {
+      const matchedStore = stores.find((item) => item.id === storeFromUrl)
+      if (matchedStore) {
+        setSelectedStoreId(matchedStore.id)
+        setStoreLocked(true)
+      }
     }
+
+    if (viewFromUrl === 'driver' || viewFromUrl === 'success') {
+      setDesktopTab(viewFromUrl)
+      setMobileTab(viewFromUrl === 'driver' ? 'driver' : 'success')
+    }
+
+    if (viewFromUrl === 'history') {
+      setDesktopTab('history')
+      setMobileTab('recent')
+    }
+
+    if (viewFromUrl === 'records') {
+      setDesktopTab('records')
+      setMobileTab('recent')
+    }
+  }, [])
+
+  useEffect(() => {
+    const onResize = () => setScreenWidth(window.innerWidth)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
   }, [])
 
   const selectedStore = useMemo(
@@ -354,9 +473,9 @@ export default function App() {
   )
 
   const currentRule = useMemo(() => {
-    if (!supplier || !selectedStore?.name) return null
-    return getArrivalRule(supplier, selectedStore.name)
-  }, [supplier, selectedStore])
+    if (!currentSupplier || !selectedStore?.name) return null
+    return getArrivalRule(currentSupplier, selectedStore.name)
+  }, [currentSupplier, selectedStore])
 
   const currentLatestMinutes = useMemo(() => {
     if (!currentRule) return null
@@ -368,7 +487,30 @@ export default function App() {
     [currentLatestMinutes]
   )
 
-  const canSubmit = !!supplier && !!category && geoPassed && photoUploaded
+  const currentRuleMatched = !!currentRule
+  const canSubmit = !!currentSupplier && !!category && geoPassed && photoUploaded
+
+  const visibleRecords = useMemo(() => {
+    if (storeLocked) {
+      return records.filter((r) => r.store === selectedStore.name)
+    }
+    return records
+  }, [records, storeLocked, selectedStore])
+
+  const historyFiltered = useMemo(() => {
+    return visibleRecords.filter((r) => {
+      const kw = historyKeyword.trim()
+      const matchKw = !kw || [r.id, r.store, r.supplier].some((v) => String(v).includes(kw))
+      const matchSupplier = historySupplier === 'all' || r.supplier === historySupplier
+      return matchKw && matchSupplier
+    })
+  }, [visibleRecords, historyKeyword, historySupplier])
+
+  const recentRecords = useMemo(() => historyFiltered.slice(0, 20), [historyFiltered])
+
+  const statToday = visibleRecords.filter((r) => r.date === todayStr()).length
+  const statGeoPass = visibleRecords.filter((r) => r.geoPassed).length
+  const statManualReview = visibleRecords.filter((r) => r.needManualReview).length
 
   const handleGeoCheck = () => {
     if (selectedStore.lat == null || selectedStore.lng == null) {
@@ -419,16 +561,27 @@ export default function App() {
     const now = new Date()
     const time = formatDateTime(now)
     const nowMinutes = now.getHours() * 60 + now.getMinutes()
-    const latestMinutes = currentLatestMinutes
-    const isLate = latestMinutes != null ? nowMinutes > latestMinutes : false
-    const lateMinutes = latestMinutes != null && isLate ? nowMinutes - latestMinutes : 0
+
+    const ruleMatched = !!currentRule
+    const needManualReview = !ruleMatched
+
+    let isLate = false
+    let lateMinutes = 0
+    let delayStatus: DelayStatus = '待人工判断'
+
+    if (ruleMatched) {
+      const latestMinutes = currentLatestMinutes
+      isLate = latestMinutes != null ? nowMinutes > latestMinutes : false
+      lateMinutes = latestMinutes != null && isLate ? nowMinutes - latestMinutes : 0
+      delayStatus = isLate ? '迟到' : '未迟到'
+    }
 
     const rec: RecordItem = {
       id: `REC-${time.replace(/[-: ]/g, '').slice(0, 14)}`,
       date: todayStr(),
       time,
       store: selectedStore.name,
-      supplier,
+      supplier: currentSupplier,
       category,
       batch: deliveryBatch,
       geoPassed,
@@ -438,14 +591,18 @@ export default function App() {
       exceptionRemark,
       status: exceptionReason ? '异常待处理' : '已打卡',
       normalArrivalTime: currentRule?.normalTime ?? '-',
-      latestArrivalTime: currentLatestTimeText,
+      latestArrivalTime: ruleMatched ? currentLatestTimeText : '-',
       isLate,
       lateMinutes,
+      ruleMatched,
+      needManualReview,
+      delayStatus,
     }
 
     setRecords((prev) => [rec, ...prev])
     setLastRecord(rec)
-    setSupplier('')
+
+    setCurrentSupplier('')
     setCategory('')
     setDeliveryBatch('上午批次')
     setDistance(null)
@@ -454,7 +611,9 @@ export default function App() {
     setPhotoUploaded(false)
     setExceptionReason('')
     setExceptionRemark('')
-    setTab('success')
+
+    setDesktopTab('success')
+    setMobileTab('success')
   }
 
   const exportCsv = (period: ExportPeriod) => {
@@ -469,8 +628,11 @@ export default function App() {
       '定位通过',
       '距离(米)',
       '照片',
+      '规则状态',
+      '人工复核',
       '正常到货时间',
       '最晚到货时间',
+      '判定状态',
       '是否迟到',
       '迟到分钟数',
       '异常原因',
@@ -478,7 +640,7 @@ export default function App() {
       '状态',
     ]
 
-    const rows = records.map((r) => [
+    const rows = historyFiltered.map((r) => [
       r.id,
       r.date,
       r.time,
@@ -489,8 +651,11 @@ export default function App() {
       r.geoPassed ? '是' : '否',
       r.distance,
       r.photoUploaded ? '已上传' : '未上传',
+      r.ruleMatched ? '已匹配' : '未匹配',
+      r.needManualReview ? '是' : '否',
       r.normalArrivalTime,
       r.latestArrivalTime,
+      r.delayStatus,
       r.isLate ? '是' : '否',
       r.lateMinutes,
       r.exceptionReason || '',
@@ -507,396 +672,610 @@ export default function App() {
     const a = document.createElement('a')
     a.href = url
     const periodLabel = period === 'day' ? '日' : period === 'week' ? '周' : '月'
-    a.download = `司机到店打卡记录_${periodLabel}_${todayStr()}.csv`
+    const storeLabel = storeLocked ? `_${selectedStore.name}` : '_全部门店'
+    a.download = `司机到店打卡记录${storeLabel}_${periodLabel}_${todayStr()}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  const historyFiltered = records.filter((r) => {
-    const kw = historyKeyword.trim()
-    const matchKw = !kw || [r.id, r.store, r.supplier].some((v) => String(v).includes(kw))
-    const matchSupplier = historySupplier === 'all' || r.supplier === historySupplier
-    return matchKw && matchSupplier
-  })
+  const statsGridStyle: React.CSSProperties = {
+    display: 'grid',
+    gap: 12,
+    gridTemplateColumns: isMobile ? 'repeat(2, minmax(0,1fr))' : 'repeat(4, minmax(0,1fr))',
+  }
 
-  const statToday = records.filter((r) => r.date === todayStr()).length
-  const statGeoPass = records.filter((r) => r.geoPassed).length
-  const statSuppliers = new Set(records.map((r) => r.supplier)).size
+  const desktopTabGridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, minmax(0,1fr))',
+    gap: 8,
+    background: '#f1f5f9',
+    padding: 6,
+    borderRadius: 14,
+    marginBottom: 20,
+  }
+
+  const mobileTabGridStyle: React.CSSProperties = {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(0,1fr))',
+    gap: 8,
+    background: '#f1f5f9',
+    padding: 6,
+    borderRadius: 14,
+    marginBottom: 20,
+  }
+
+  const driverContent = (
+    <div
+      style={{
+        display: 'grid',
+        gap: 16,
+        gridTemplateColumns: isMobile ? '1fr' : 'minmax(0,1.2fr) minmax(0,0.8fr)',
+      }}
+    >
+      <div style={{ ...box, padding: isMobile ? 14 : 20 }}>
+        <div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <Store size={20} /> 门店二维码打卡入口
+        </div>
+
+        <div style={{ display: 'grid', gap: 14 }}>
+          <div>
+            <div style={{ marginBottom: 6, fontWeight: 600 }}>当前门店</div>
+            <select
+              style={inputStyle}
+              value={selectedStoreId}
+              onChange={(e) => setSelectedStoreId(e.target.value)}
+              disabled={storeLocked}
+            >
+              {stores.map((store) => (
+                <option key={store.id} value={store.id}>{store.name}</option>
+              ))}
+            </select>
+            {storeLocked && (
+              <div style={{ fontSize: 13, color: '#166534', marginTop: 6, lineHeight: 1.6 }}>
+                当前页面由门店二维码进入，门店已自动锁定。
+              </div>
+            )}
+          </div>
+
+          <div style={{ ...box, background: '#f8fafc', padding: isMobile ? 14 : 16 }}>
+            <div style={{ color: '#64748b', fontSize: 14, marginBottom: 8 }}>二维码绑定信息</div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>门店：{selectedStore.name}</div>
+            <div style={{ color: '#475569', fontSize: 14, marginBottom: 6, lineHeight: 1.8, wordBreak: 'break-all' }}>
+              收货地址：{selectedStore.location}
+            </div>
+            <div style={{ color: '#475569', fontSize: 14, marginBottom: 4 }}>打卡半径：100 米</div>
+            <div style={{ color: '#64748b', fontSize: 12, lineHeight: 1.6 }}>
+              经纬度：{selectedStore.lat ?? '-'} / {selectedStore.lng ?? '-'}
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gap: 12,
+              gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+            }}
+          >
+            <div>
+              <div style={{ marginBottom: 6, fontWeight: 600 }}>所属供应商</div>
+              <select style={inputStyle} value={currentSupplier} onChange={(e) => setCurrentSupplier(e.target.value)}>
+                <option value="">请选择供应商</option>
+                {suppliers.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div>
+              <div style={{ marginBottom: 6, fontWeight: 600 }}>送货品类</div>
+              <select style={inputStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
+                <option value="">请选择送货品类</option>
+                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ marginBottom: 6, fontWeight: 600 }}>送货批次</div>
+            <select style={inputStyle} value={deliveryBatch} onChange={(e) => setDeliveryBatch(e.target.value)}>
+              <option value="上午批次">上午批次</option>
+              <option value="下午批次">下午批次</option>
+              <option value="晚间补货">晚间补货</option>
+            </select>
+          </div>
+
+          <div style={{ ...box, background: '#f8fafc', padding: isMobile ? 14 : 16 }}>
+            <div style={{ fontWeight: 700, marginBottom: 10 }}>到货规则提示</div>
+
+            {currentRuleMatched ? (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div><span style={{ color: '#64748b' }}>规则状态：</span>已匹配</div>
+                <div><span style={{ color: '#64748b' }}>正常到货时间：</span>{currentRule?.normalTime}</div>
+                <div><span style={{ color: '#64748b' }}>最晚到货时间：</span>{currentLatestTimeText}</div>
+                <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.7 }}>
+                  本次打卡会按该供应商在当前门店的预设规则自动判定是否迟到。
+                </div>
+              </div>
+            ) : currentSupplier ? (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div><span style={{ color: '#64748b' }}>规则状态：</span>未匹配</div>
+                <div><span style={{ color: '#64748b' }}>正常到货时间：</span>未配置</div>
+                <div><span style={{ color: '#64748b' }}>最晚到货时间：</span>未配置</div>
+                <div style={{ fontSize: 13, color: '#92400e', lineHeight: 1.7 }}>
+                  当前供应商在本门店暂无预设规则，允许正常提交打卡，后台会标记为“待人工判断”。
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.7 }}>
+                请选择供应商后查看当前门店的到货规则。
+              </div>
+            )}
+          </div>
+
+          <div style={{ ...box, padding: isMobile ? 14 : 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 10, alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontWeight: 700 }}>定位校验</div>
+                <div style={{ color: '#64748b', fontSize: 14, lineHeight: 1.7 }}>测试定位或真实定位都可以，100米内才能打卡。</div>
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: geoPassed ? '#166534' : '#334155', whiteSpace: 'nowrap' }}>
+                {geoPassed ? '已通过' : '待校验'}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+              <button style={buttonStyle(useMockLocation)} onClick={() => setUseMockLocation(true)}>使用测试定位</button>
+              <button style={buttonStyle(!useMockLocation)} onClick={() => setUseMockLocation(false)}>使用真实定位</button>
+            </div>
+
+            {useMockLocation && (
+              <div
+                style={{
+                  display: 'grid',
+                  gap: 12,
+                  gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+                  marginBottom: 10,
+                }}
+              >
+                <input style={inputStyle} value={mockLng} onChange={(e) => setMockLng(e.target.value)} placeholder="测试经度" />
+                <input style={inputStyle} value={mockLat} onChange={(e) => setMockLat(e.target.value)} placeholder="测试纬度" />
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+              <button style={buttonStyle(true)} onClick={handleGeoCheck}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <LocateFixed size={16} />
+                  {useMockLocation ? '按测试定位校验' : '获取真实定位并校验'}
+                </span>
+              </button>
+              {distance !== null && <div style={{ fontSize: 14 }}>当前距离门店约 <strong>{distance} 米</strong></div>}
+            </div>
+
+            {locationMessage && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 8,
+                  fontSize: 14,
+                  padding: 10,
+                  borderRadius: 10,
+                  background: geoPassed ? '#f0fdf4' : '#fffbeb',
+                  color: geoPassed ? '#166534' : '#92400e',
+                  lineHeight: 1.7,
+                }}
+              >
+                {geoPassed ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+                <span>{locationMessage}</span>
+              </div>
+            )}
+          </div>
+
+          <div style={{ ...box, padding: isMobile ? 14 : 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}>
+                <Camera size={16} /> 现场拍照打卡
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700 }}>{photoUploaded ? '已上传' : '待上传'}</div>
+            </div>
+            <button style={buttonStyle(false)} onClick={() => setPhotoUploaded(true)}>上传现场照片</button>
+          </div>
+
+          <div style={{ ...box, padding: isMobile ? 14 : 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, marginBottom: 10 }}>
+              <CircleAlert size={16} /> 异常原因填写
+            </div>
+            <div
+              style={{
+                display: 'grid',
+                gap: 12,
+                gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+              }}
+            >
+              <div>
+                <div style={{ marginBottom: 6, fontWeight: 600 }}>异常原因</div>
+                <select style={inputStyle} value={exceptionReason} onChange={(e) => setExceptionReason(e.target.value)}>
+                  <option value="">无异常可不填</option>
+                  {exceptionReasons.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{ marginBottom: 6, fontWeight: 600 }}>异常备注</div>
+                <input
+                  style={inputStyle}
+                  placeholder="可补充具体异常情况"
+                  value={exceptionRemark}
+                  onChange={(e) => setExceptionRemark(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={handleCheckIn}
+            disabled={!canSubmit}
+            style={{
+              ...buttonStyle(true),
+              width: '100%',
+              minHeight: 48,
+              opacity: canSubmit ? 1 : 0.5,
+              cursor: canSubmit ? 'pointer' : 'not-allowed',
+            }}
+          >
+            确认打卡并记录到店时间
+          </button>
+        </div>
+      </div>
+
+      {!isMobile && (
+        <div style={{ ...box, padding: 20 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 10 }}>当前版本规则说明</div>
+          <div style={{ color: '#64748b', marginBottom: 12, lineHeight: 1.7 }}>
+            手机端只做打卡和最近记录，电脑端负责完整历史、后台表格和导出。
+          </div>
+          <ul style={{ paddingLeft: 18, margin: 0, lineHeight: 1.9, color: '#334155' }}>
+            <li>有规则：自动判定未迟到或迟到</li>
+            <li>无规则：标记为待人工判断</li>
+            <li>支持临时供应商送货打卡</li>
+            <li>门店二维码可隔离查看本店数据</li>
+            <li>手机端不展示后台大表格</li>
+            <li>电脑端保留导出和复核</li>
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+
+  const successContent = (
+    <div style={{ ...box, maxWidth: 760, margin: '0 auto', textAlign: 'center' }}>
+      <div style={{ width: 64, height: 64, margin: '0 auto 16px', borderRadius: 999, background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <CheckCircle2 size={36} />
+      </div>
+      <div style={{ fontSize: isMobile ? 24 : 28, fontWeight: 800, marginBottom: 10, lineHeight: 1.3 }}>
+        打卡成功，已记录到店时间
+      </div>
+      <div style={{ color: '#64748b', marginBottom: 18, lineHeight: 1.7 }}>
+        成功提交后会自动新增一条后台记录，并根据规则状态写入迟到或待人工判断。
+      </div>
+      <div style={{ ...box, background: '#f8fafc', textAlign: 'left', marginBottom: 18, lineHeight: 1.8 }}>
+        <div><span style={{ color: '#64748b' }}>门店：</span>{lastRecord?.store || selectedStore.name}</div>
+        <div><span style={{ color: '#64748b' }}>所属供应商：</span>{lastRecord?.supplier || '-'}</div>
+        <div><span style={{ color: '#64748b' }}>打卡时间：</span>{lastRecord?.time || formatDateTime()}</div>
+        <div><span style={{ color: '#64748b' }}>规则状态：</span>{lastRecord?.ruleMatched ? '已匹配' : '未匹配'}</div>
+        <div><span style={{ color: '#64748b' }}>正常到货时间：</span>{lastRecord?.normalArrivalTime || '-'}</div>
+        <div><span style={{ color: '#64748b' }}>最晚到货时间：</span>{lastRecord?.latestArrivalTime || '-'}</div>
+        <div><span style={{ color: '#64748b' }}>判定状态：</span>{lastRecord?.delayStatus || '-'}</div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <button
+          style={buttonStyle(false)}
+          onClick={() => {
+            setDesktopTab('driver')
+            setMobileTab('driver')
+          }}
+        >
+          继续打卡
+        </button>
+        {!isMobile && (
+          <button
+            style={buttonStyle(true)}
+            onClick={() => setDesktopTab('records')}
+          >
+            查看后台记录
+          </button>
+        )}
+        {isMobile && (
+          <button
+            style={buttonStyle(true)}
+            onClick={() => setMobileTab('recent')}
+          >
+            查看最近记录
+          </button>
+        )}
+      </div>
+    </div>
+  )
+
+  const mobileRecentContent = (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{ ...box, padding: 14 }}>
+        <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>最近记录</div>
+        <div style={{ color: '#64748b', fontSize: 14, lineHeight: 1.7 }}>
+          手机端仅展示最近记录卡片，完整历史和后台导出请在电脑端查看。
+        </div>
+      </div>
+
+      {recentRecords.length === 0 ? (
+        <div style={{ ...box, color: '#64748b' }}>当前没有可显示的记录。</div>
+      ) : (
+        recentRecords.map((record) => <MobileRecordCard key={record.id} record={record} />)
+      )}
+    </div>
+  )
+
+  const desktopHistoryContent = (
+    <div style={box}>
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 10 }}>司机历史记录查询</div>
+      <div
+        style={{
+          display: 'grid',
+          gap: 12,
+          gridTemplateColumns: '1fr 220px 260px',
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ position: 'relative' }}>
+          <Search size={16} style={{ position: 'absolute', left: 10, top: 14, color: '#94a3b8' }} />
+          <input
+            style={{ ...inputStyle, paddingLeft: 34 }}
+            value={historyKeyword}
+            onChange={(e) => setHistoryKeyword(e.target.value)}
+            placeholder="搜索供应商、门店、记录编号"
+          />
+        </div>
+        <select
+          style={inputStyle}
+          value={historySupplier}
+          onChange={(e) => setHistorySupplier(e.target.value)}
+        >
+          <option value="all">全部供应商</option>
+          {suppliers.map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button style={buttonStyle(false)} onClick={() => exportCsv('day')}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <FileDown size={16} /> 导出日
+            </span>
+          </button>
+          <button style={buttonStyle(false)} onClick={() => exportCsv('week')}>导出周</button>
+          <button style={buttonStyle(false)} onClick={() => exportCsv('month')}>导出月</button>
+        </div>
+      </div>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: '#f8fafc' }}>
+              {['记录编号', '门店', '供应商', '打卡时间', '规则状态', '判定状态', '状态'].map((h) => (
+                <th key={h} style={{ textAlign: 'left', padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {historyFiltered.map((r) => (
+              <tr key={r.id}>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.id}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.store}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.supplier}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.time}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+                  {r.ruleMatched ? '已匹配' : '未匹配'}
+                </td>
+                <td
+                  style={{
+                    padding: 12,
+                    borderBottom: '1px solid #e2e8f0',
+                    whiteSpace: 'nowrap',
+                    color:
+                      r.delayStatus === '迟到'
+                        ? '#dc2626'
+                        : r.delayStatus === '待人工判断'
+                        ? '#92400e'
+                        : '#166534',
+                  }}
+                >
+                  {r.delayStatus === '迟到' ? `迟到 ${r.lateMinutes} 分钟` : r.delayStatus}
+                </td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+
+  const desktopRecordsContent = (
+    <div style={box}>
+      <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 10 }}>送货司机到店打卡记录表</div>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: 1900, borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ background: '#f8fafc' }}>
+              {[
+                '记录编号',
+                '打卡日期',
+                '打卡时间',
+                '门店名称',
+                '所属供应商',
+                '送货品类',
+                '批次',
+                '定位通过',
+                '距离(米)',
+                '照片',
+                '规则状态',
+                '人工复核',
+                '正常到货时间',
+                '最晚到货时间',
+                '判定状态',
+                '是否迟到',
+                '迟到分钟数',
+                '异常原因',
+                '异常备注',
+                '状态',
+              ].map((h) => (
+                <th key={h} style={{ textAlign: 'left', padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {historyFiltered.map((r) => (
+              <tr key={r.id}>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.id}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.date}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.time}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.store}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.supplier}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.category}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.batch}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.geoPassed ? '是' : '否'}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.distance}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.photoUploaded ? '已上传' : '未上传'}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.ruleMatched ? '已匹配' : '未匹配'}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.needManualReview ? '是' : '否'}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.normalArrivalTime}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.latestArrivalTime}</td>
+                <td
+                  style={{
+                    padding: 12,
+                    borderBottom: '1px solid #e2e8f0',
+                    whiteSpace: 'nowrap',
+                    color:
+                      r.delayStatus === '迟到'
+                        ? '#dc2626'
+                        : r.delayStatus === '待人工判断'
+                        ? '#92400e'
+                        : '#166534',
+                  }}
+                >
+                  {r.delayStatus}
+                </td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.isLate ? '是' : '否'}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.lateMinutes}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.exceptionReason || '-'}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.exceptionRemark || '-'}</td>
+                <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{r.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
 
   return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc', padding: 16 }}>
-      <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
-        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))' }}>
+    <div style={{ minHeight: '100vh', background: '#f8fafc', padding: isMobile ? 12 : 16 }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={statsGridStyle}>
           {[
-            { icon: <QrCode size={28} />, label: '打卡模式', value: '门店二维码' },
-            { icon: <Clock3 size={28} />, label: '今日打卡', value: String(statToday) },
-            { icon: <MapPin size={28} />, label: '定位通过', value: String(statGeoPass) },
-            { icon: <Truck size={28} />, label: '供应商数量', value: String(statSuppliers) },
+            { icon: <QrCode size={24} />, label: '打卡模式', value: '门店二维码' },
+            { icon: <Clock3 size={24} />, label: '今日打卡', value: String(statToday) },
+            { icon: <MapPin size={24} />, label: '定位通过', value: String(statGeoPass) },
+            { icon: <ClipboardCheck size={24} />, label: '待人工判断', value: String(statManualReview) },
           ].map((item) => (
-            <div key={item.label} style={{ ...box, display: 'flex', gap: 12, alignItems: 'center' }}>
+            <div key={item.label} style={{ ...box, display: 'flex', gap: 10, alignItems: 'center', padding: isMobile ? 12 : 16 }}>
               {item.icon}
               <div>
-                <div style={{ color: '#64748b', fontSize: 14 }}>{item.label}</div>
-                <div style={{ fontSize: 20, fontWeight: 700 }}>{item.value}</div>
+                <div style={{ color: '#64748b', fontSize: isMobile ? 12 : 14 }}>{item.label}</div>
+                <div style={{ fontSize: isMobile ? 18 : 20, fontWeight: 700 }}>{item.value}</div>
               </div>
             </div>
           ))}
         </div>
 
         <div style={box}>
-          <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>司机到店扫码打卡业务原型</div>
-          <div style={{ color: '#475569', marginBottom: 16 }}>
-            当前版本已加入供应商正常到货时间、迟到判定和二维码门店参数绑定。
+          <div style={{ fontSize: isMobile ? 28 : 36, fontWeight: 800, marginBottom: 8, textAlign: 'center', lineHeight: 1.2 }}>
+            司机到店扫码打卡业务原型
+          </div>
+          <div style={{ color: '#475569', marginBottom: 16, textAlign: 'center', fontSize: isMobile ? 14 : 18, lineHeight: 1.6 }}>
+            手机端精简为打卡与最近记录，电脑端保留完整后台表格与导出功能。
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, background: '#f1f5f9', padding: 6, borderRadius: 14, marginBottom: 20 }}>
-            {[
-              { key: 'driver', label: '司机打卡页' },
-              { key: 'history', label: '司机历史查询' },
-              { key: 'success', label: '打卡成功页' },
-              { key: 'records', label: '后台记录表' },
-            ].map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key as TabKey)}
-                style={{
-                  ...buttonStyle(tab === t.key),
-                  width: '100%',
-                  border: 'none',
-                  background: tab === t.key ? '#0f172a' : 'transparent',
-                  color: tab === t.key ? '#fff' : '#0f172a',
-                }}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {tab === 'driver' && (
-            <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'minmax(0,1.2fr) minmax(0,0.8fr)' }}>
-              <div style={{ ...box, padding: 20 }}>
-                <div style={{ fontSize: 20, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <Store size={20} /> 门店二维码打卡入口
-                </div>
-
-                <div style={{ display: 'grid', gap: 14 }}>
-                  <div>
-                    <div style={{ marginBottom: 6, fontWeight: 600 }}>当前门店</div>
-                    <select
-                      style={inputStyle}
-                      value={selectedStoreId}
-                      onChange={(e) => setSelectedStoreId(e.target.value)}
-                      disabled={storeLocked}
-                    >
-                      {stores.map((store) => (
-                        <option key={store.id} value={store.id}>{store.name}</option>
-                      ))}
-                    </select>
-                    {storeLocked && (
-                      <div style={{ fontSize: 13, color: '#166534', marginTop: 6 }}>
-                        当前页面由门店二维码进入，门店已自动锁定。
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{ ...box, background: '#f8fafc' }}>
-                    <div style={{ color: '#64748b', fontSize: 14, marginBottom: 8 }}>二维码绑定信息</div>
-                    <div style={{ fontWeight: 700, marginBottom: 6 }}>门店：{selectedStore.name}</div>
-                    <div style={{ color: '#475569', fontSize: 14, marginBottom: 4 }}>收货地址：{selectedStore.location}</div>
-                    <div style={{ color: '#475569', fontSize: 14, marginBottom: 4 }}>打卡半径：100 米</div>
-                    <div style={{ color: '#64748b', fontSize: 12 }}>
-                      经纬度：{selectedStore.lat ?? '-'} / {selectedStore.lng ?? '-'}
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
-                    <div>
-                      <div style={{ marginBottom: 6, fontWeight: 600 }}>所属供应商</div>
-                      <select style={inputStyle} value={supplier} onChange={(e) => setSupplier(e.target.value)}>
-                        <option value="">请选择供应商</option>
-                        {suppliers.map((s) => <option key={s} value={s}>{s}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <div style={{ marginBottom: 6, fontWeight: 600 }}>送货品类</div>
-                      <select style={inputStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
-                        <option value="">请选择送货品类</option>
-                        {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div>
-                    <div style={{ marginBottom: 6, fontWeight: 600 }}>送货批次</div>
-                    <select style={inputStyle} value={deliveryBatch} onChange={(e) => setDeliveryBatch(e.target.value)}>
-                      <option value="上午批次">上午批次</option>
-                      <option value="下午批次">下午批次</option>
-                      <option value="晚间补货">晚间补货</option>
-                    </select>
-                  </div>
-
-                  <div style={{ ...box, background: '#f8fafc' }}>
-                    <div style={{ fontWeight: 700, marginBottom: 10 }}>正常到货时间规则</div>
-                    <div style={{ display: 'grid', gap: 8 }}>
-                      <div><span style={{ color: '#64748b' }}>正常到货时间：</span>{currentRule?.normalTime ?? '未配置'}</div>
-                      <div><span style={{ color: '#64748b' }}>最晚到货时间：</span>{currentRule ? currentLatestTimeText : '未配置'}</div>
-                      <div style={{ fontSize: 13, color: '#64748b' }}>
-                        判定规则：单一时间按该时间截止；时间段按最后时间截止；“前”按该时间截止。
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ ...box }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
-                      <div>
-                        <div style={{ fontWeight: 700 }}>定位校验</div>
-                        <div style={{ color: '#64748b', fontSize: 14 }}>测试定位或真实定位都可以，100米内才能打卡。</div>
-                      </div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: geoPassed ? '#166534' : '#334155' }}>
-                        {geoPassed ? '已通过' : '待校验'}
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
-                      <button style={buttonStyle(useMockLocation)} onClick={() => setUseMockLocation(true)}>使用测试定位</button>
-                      <button style={buttonStyle(!useMockLocation)} onClick={() => setUseMockLocation(false)}>使用真实定位</button>
-                    </div>
-
-                    {useMockLocation && (
-                      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr', marginBottom: 10 }}>
-                        <input style={inputStyle} value={mockLng} onChange={(e) => setMockLng(e.target.value)} placeholder="测试经度" />
-                        <input style={inputStyle} value={mockLat} onChange={(e) => setMockLat(e.target.value)} placeholder="测试纬度" />
-                      </div>
-                    )}
-
-                    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
-                      <button style={buttonStyle(true)} onClick={handleGeoCheck}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                          <LocateFixed size={16} />
-                          {useMockLocation ? '按测试定位校验' : '获取真实定位并校验'}
-                        </span>
-                      </button>
-                      {distance !== null && <div style={{ fontSize: 14 }}>当前距离门店约 <strong>{distance} 米</strong></div>}
-                    </div>
-
-                    {locationMessage && (
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          fontSize: 14,
-                          padding: 10,
-                          borderRadius: 10,
-                          background: geoPassed ? '#f0fdf4' : '#fffbeb',
-                          color: geoPassed ? '#166534' : '#92400e',
-                        }}
-                      >
-                        {geoPassed ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-                        {locationMessage}
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{ ...box }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}>
-                        <Camera size={16} /> 现场拍照打卡
-                      </div>
-                      <div style={{ fontSize: 12, fontWeight: 700 }}>{photoUploaded ? '已上传' : '待上传'}</div>
-                    </div>
-                    <button style={buttonStyle(false)} onClick={() => setPhotoUploaded(true)}>上传现场照片</button>
-                  </div>
-
-                  <div style={{ ...box }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, marginBottom: 10 }}>
-                      <CircleAlert size={16} /> 异常原因填写
-                    </div>
-                    <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
-                      <div>
-                        <div style={{ marginBottom: 6, fontWeight: 600 }}>异常原因</div>
-                        <select style={inputStyle} value={exceptionReason} onChange={(e) => setExceptionReason(e.target.value)}>
-                          <option value="">无异常可不填</option>
-                          {exceptionReasons.map((item) => <option key={item} value={item}>{item}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <div style={{ marginBottom: 6, fontWeight: 600 }}>异常备注</div>
-                        <input
-                          style={inputStyle}
-                          placeholder="可补充具体异常情况"
-                          value={exceptionRemark}
-                          onChange={(e) => setExceptionRemark(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={handleCheckIn}
-                    disabled={!canSubmit}
-                    style={{
-                      ...buttonStyle(true),
-                      width: '100%',
-                      height: 46,
-                      opacity: canSubmit ? 1 : 0.5,
-                      cursor: canSubmit ? 'pointer' : 'not-allowed',
-                    }}
-                  >
-                    确认打卡并记录到店时间
-                  </button>
-                </div>
-              </div>
-
-              <div style={{ ...box, padding: 20 }}>
-                <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 10 }}>当前版本规则说明</div>
-                <div style={{ color: '#64748b', marginBottom: 12 }}>已加入正常到货时间与迟到判定逻辑。</div>
-                <ul style={{ paddingLeft: 18, margin: 0, lineHeight: 1.8, color: '#334155' }}>
-                  <li>单一时间，超过该时间即视为迟到</li>
-                  <li>时间段，超过最后时间即视为迟到</li>
-                  <li>“前”，超过该时间即视为迟到</li>
-                  <li>所有门店定位范围统一为 100 米</li>
-                  <li>不记录司机姓名和车牌号</li>
-                  <li>支持后台导出迟到字段</li>
-                </ul>
-              </div>
+          {storeLocked && (
+            <div
+              style={{
+                ...box,
+                marginBottom: 16,
+                background: '#f8fafc',
+                borderColor: '#cbd5e1',
+                lineHeight: 1.7,
+              }}
+            >
+              当前为门店专属查看模式，仅显示：
+              <strong> {selectedStore.name} </strong>
+              的记录。
             </div>
           )}
 
-          {tab === 'history' && (
-            <div style={{ ...box }}>
-              <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 10 }}>司机历史记录查询</div>
-              <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 220px 260px', marginBottom: 16 }}>
-                <div style={{ position: 'relative' }}>
-                  <Search size={16} style={{ position: 'absolute', left: 10, top: 12, color: '#94a3b8' }} />
-                  <input
-                    style={{ ...inputStyle, paddingLeft: 34 }}
-                    value={historyKeyword}
-                    onChange={(e) => setHistoryKeyword(e.target.value)}
-                    placeholder="搜索供应商、门店、记录编号"
-                  />
-                </div>
-                <select style={inputStyle} value={historySupplier} onChange={(e) => setHistorySupplier(e.target.value)}>
-                  <option value="all">全部供应商</option>
-                  {suppliers.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button style={buttonStyle(false)} onClick={() => exportCsv('day')}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      <FileDown size={16} /> 导出日
-                    </span>
-                  </button>
-                  <button style={buttonStyle(false)} onClick={() => exportCsv('week')}>导出周</button>
-                  <button style={buttonStyle(false)} onClick={() => exportCsv('month')}>导出月</button>
-                </div>
-              </div>
-
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: '#f8fafc' }}>
-                    {['记录编号', '门店', '供应商', '打卡时间', '最晚到货时间', '是否迟到', '状态'].map((h) => (
-                      <th key={h} style={{ textAlign: 'left', padding: 12, borderBottom: '1px solid #e2e8f0' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {historyFiltered.map((r) => (
-                    <tr key={r.id}>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.id}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.store}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.supplier}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.time}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.latestArrivalTime}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', color: r.isLate ? '#dc2626' : '#166534' }}>
-                        {r.isLate ? `迟到 ${r.lateMinutes} 分钟` : '未迟到'}
-                      </td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {!isMobile && (
+            <div style={desktopTabGridStyle}>
+              {[
+                { key: 'driver', label: '司机打卡页' },
+                { key: 'history', label: '司机历史查询' },
+                { key: 'success', label: '打卡成功页' },
+                { key: 'records', label: '后台记录表' },
+              ].map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setDesktopTab(t.key as DesktopTabKey)}
+                  style={{
+                    ...buttonStyle(desktopTab === t.key),
+                    width: '100%',
+                    border: 'none',
+                    background: desktopTab === t.key ? '#0f172a' : 'transparent',
+                    color: desktopTab === t.key ? '#fff' : '#0f172a',
+                    fontSize: 16,
+                    padding: '10px 14px',
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
             </div>
           )}
 
-          {tab === 'success' && (
-            <div style={{ ...box, maxWidth: 760, margin: '0 auto', textAlign: 'center' }}>
-              <div style={{ width: 64, height: 64, margin: '0 auto 16px', borderRadius: 999, background: '#dcfce7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <CheckCircle2 size={36} />
-              </div>
-              <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 10 }}>打卡成功，已记录到店时间</div>
-              <div style={{ color: '#64748b', marginBottom: 18 }}>成功提交后会自动新增一条后台记录，并写入迟到判定。</div>
-              <div style={{ ...box, background: '#f8fafc', textAlign: 'left', marginBottom: 18 }}>
-                <div><span style={{ color: '#64748b' }}>门店：</span>{lastRecord?.store || selectedStore.name}</div>
-                <div><span style={{ color: '#64748b' }}>所属供应商：</span>{lastRecord?.supplier || '-'}</div>
-                <div><span style={{ color: '#64748b' }}>打卡时间：</span>{lastRecord?.time || formatDateTime()}</div>
-                <div><span style={{ color: '#64748b' }}>正常到货时间：</span>{lastRecord?.normalArrivalTime || '-'}</div>
-                <div><span style={{ color: '#64748b' }}>最晚到货时间：</span>{lastRecord?.latestArrivalTime || '-'}</div>
-                <div><span style={{ color: '#64748b' }}>迟到状态：</span>{lastRecord ? (lastRecord.isLate ? `迟到 ${lastRecord.lateMinutes} 分钟` : '未迟到') : '-'}</div>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
-                <button style={buttonStyle(false)} onClick={() => setTab('driver')}>继续打卡</button>
-                <button style={buttonStyle(true)} onClick={() => setTab('records')}>查看后台记录</button>
-              </div>
+          {isMobile && (
+            <div style={mobileTabGridStyle}>
+              {[
+                { key: 'driver', label: '司机打卡' },
+                { key: 'success', label: '打卡成功' },
+                { key: 'recent', label: '最近记录' },
+              ].map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setMobileTab(t.key as MobileTabKey)}
+                  style={{
+                    ...buttonStyle(mobileTab === t.key),
+                    width: '100%',
+                    border: 'none',
+                    background: mobileTab === t.key ? '#0f172a' : 'transparent',
+                    color: mobileTab === t.key ? '#fff' : '#0f172a',
+                    fontSize: 14,
+                    padding: '12px 8px',
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
             </div>
           )}
 
-          {tab === 'records' && (
-            <div style={{ ...box }}>
-              <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 10 }}>送货司机到店打卡记录表</div>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: '#f8fafc' }}>
-                    {[
-                      '记录编号',
-                      '打卡日期',
-                      '打卡时间',
-                      '门店名称',
-                      '所属供应商',
-                      '送货品类',
-                      '批次',
-                      '定位通过',
-                      '距离(米)',
-                      '照片',
-                      '正常到货时间',
-                      '最晚到货时间',
-                      '是否迟到',
-                      '迟到分钟数',
-                      '异常原因',
-                      '异常备注',
-                      '状态',
-                    ].map((h) => (
-                      <th key={h} style={{ textAlign: 'left', padding: 12, borderBottom: '1px solid #e2e8f0' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {records.map((r) => (
-                    <tr key={r.id}>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.id}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.date}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.time}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.store}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.supplier}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.category}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.batch}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.geoPassed ? '是' : '否'}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.distance}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.photoUploaded ? '已上传' : '未上传'}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.normalArrivalTime}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.latestArrivalTime}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', color: r.isLate ? '#dc2626' : '#166534' }}>
-                        {r.isLate ? '是' : '否'}
-                      </td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.lateMinutes}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.exceptionReason || '-'}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.exceptionRemark || '-'}</td>
-                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {!isMobile && desktopTab === 'driver' && driverContent}
+          {!isMobile && desktopTab === 'history' && desktopHistoryContent}
+          {!isMobile && desktopTab === 'success' && successContent}
+          {!isMobile && desktopTab === 'records' && desktopRecordsContent}
+
+          {isMobile && mobileTab === 'driver' && driverContent}
+          {isMobile && mobileTab === 'success' && successContent}
+          {isMobile && mobileTab === 'recent' && mobileRecentContent}
         </div>
       </div>
     </div>
