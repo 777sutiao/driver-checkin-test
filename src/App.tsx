@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   QrCode,
   Clock3,
@@ -10,6 +10,8 @@ import {
   CheckCircle2,
   Search,
   FileDown,
+  CircleAlert,
+  AlertTriangle,
 } from 'lucide-react'
 
 type TabKey = 'driver' | 'history' | 'success' | 'records'
@@ -38,6 +40,16 @@ type RecordItem = {
   exceptionReason: string
   exceptionRemark: string
   status: string
+  normalArrivalTime: string
+  latestArrivalTime: string
+  isLate: boolean
+  lateMinutes: number
+}
+
+type ArrivalRule = {
+  supplier: string
+  store: string
+  normalTime: string
 }
 
 const stores: StoreItem[] = [
@@ -91,6 +103,78 @@ const suppliers = [
 const categories = ['活鲜', '冻品', '蔬菜', '其他物料']
 const exceptionReasons = ['定位异常', '司机未带货', '到店延迟', '信息填写错误', '其他']
 
+const arrivalRules: ArrivalRule[] = [
+  { supplier: '建伟水产摊', store: '福州一店', normalTime: '10:00' },
+  { supplier: '建伟水产摊', store: '福州四店', normalTime: '9:30' },
+  { supplier: '建伟水产摊', store: '福州五店', normalTime: '9:30' },
+  { supplier: '建伟水产摊', store: '福州六店', normalTime: '9:30' },
+  { supplier: '建伟水产摊', store: '福州八店', normalTime: '9:30' },
+  { supplier: '建伟水产摊', store: '福州九店', normalTime: '8:30-9:30' },
+  { supplier: '建伟水产摊', store: '宁德一店', normalTime: '9:30-9:50' },
+  { supplier: '建伟水产摊', store: '莆田一店', normalTime: '9:00-9:30' },
+  { supplier: '建伟水产摊', store: '福清一店', normalTime: '9:00-9:20' },
+
+  { supplier: '高绍安水产', store: '福州三店', normalTime: '8:30-9:00' },
+
+  { supplier: '合顺昌贸易有限公司', store: '厦门一店', normalTime: '8:40-9:00' },
+  { supplier: '合顺昌贸易有限公司', store: '厦门二店', normalTime: '9:00' },
+  { supplier: '合顺昌贸易有限公司', store: '厦门三店', normalTime: '8:10-8:30' },
+  { supplier: '合顺昌贸易有限公司', store: '厦门四店', normalTime: '8:30' },
+  { supplier: '合顺昌贸易有限公司', store: '泉州一店', normalTime: '9:00' },
+  { supplier: '合顺昌贸易有限公司', store: '泉州二店', normalTime: '8:30-9:00' },
+  { supplier: '合顺昌贸易有限公司', store: '龙岩一店', normalTime: '8:30-9:00' },
+  { supplier: '合顺昌贸易有限公司', store: '杭州一店', normalTime: '8:00' },
+  { supplier: '合顺昌贸易有限公司', store: '杭州二店', normalTime: '8:00' },
+  { supplier: '合顺昌贸易有限公司', store: '宁波一店', normalTime: '8:00' },
+  { supplier: '合顺昌贸易有限公司', store: '宁波二店', normalTime: '8:00' },
+
+  { supplier: '邵明芳水产', store: '福州一店', normalTime: '8:00-8:30' },
+  { supplier: '邵明芳水产', store: '福州四店', normalTime: '9:00' },
+  { supplier: '邵明芳水产', store: '福州六店', normalTime: '8:30-9:00' },
+  { supplier: '邵明芳水产', store: '福州七店', normalTime: '8:00-8:20' },
+  { supplier: '邵明芳水产', store: '福州八店', normalTime: '9:00-9:30' },
+  { supplier: '邵明芳水产', store: '福州十店', normalTime: '8:30' },
+  { supplier: '邵明芳水产', store: '宁德一店', normalTime: '9:30-9:50' },
+  { supplier: '邵明芳水产', store: '莆田一店', normalTime: '9:00-9:30' },
+  { supplier: '邵明芳水产', store: '福清一店', normalTime: '9:00-9:20' },
+
+  { supplier: '福建省康晶贸易有限公司', store: '福州一店', normalTime: '8:00' },
+  { supplier: '福建省康晶贸易有限公司', store: '福州三店', normalTime: '8:30' },
+  { supplier: '福建省康晶贸易有限公司', store: '福州五店', normalTime: '9:00' },
+  { supplier: '福建省康晶贸易有限公司', store: '福州七店', normalTime: '8:30' },
+  { supplier: '福建省康晶贸易有限公司', store: '福州八店', normalTime: '8:30' },
+  { supplier: '福建省康晶贸易有限公司', store: '福州九店', normalTime: '8:30-9:00' },
+  { supplier: '福建省康晶贸易有限公司', store: '福州十店', normalTime: '9:00' },
+  { supplier: '福建省康晶贸易有限公司', store: '福州十一店', normalTime: '9:00' },
+  { supplier: '福建省康晶贸易有限公司', store: '泉州一店', normalTime: '8:30' },
+  { supplier: '福建省康晶贸易有限公司', store: '厦门一店', normalTime: '9:00' },
+  { supplier: '福建省康晶贸易有限公司', store: '厦门二店', normalTime: '8:00' },
+  { supplier: '福建省康晶贸易有限公司', store: '厦门四店', normalTime: '9:00' },
+  { supplier: '福建省康晶贸易有限公司', store: '温州一店', normalTime: '8:30-9:00' },
+  { supplier: '福建省康晶贸易有限公司', store: '温州二店', normalTime: '8:30' },
+  { supplier: '福建省康晶贸易有限公司', store: '台州一店', normalTime: '8:30' },
+  { supplier: '福建省康晶贸易有限公司', store: '乐清一店', normalTime: '5:30' },
+
+  { supplier: '海中舟', store: '福州十店', normalTime: '8:30-9:00' },
+
+  { supplier: '志中海鲜批发', store: '漳州一店', normalTime: '8:30-9:00' },
+  { supplier: '志中海鲜批发', store: '三明一店', normalTime: '9:00' },
+
+  { supplier: '蠔倍佳水产', store: '宁德一店', normalTime: '10:30前' },
+  { supplier: '蠔倍佳水产', store: '莆田一店', normalTime: '10:30前' },
+  { supplier: '蠔倍佳水产', store: '福清一店', normalTime: '10:30前' },
+  { supplier: '蠔倍佳水产', store: '厦门二店', normalTime: '10:30前' },
+  { supplier: '蠔倍佳水产', store: '厦门三店', normalTime: '10:30前' },
+  { supplier: '蠔倍佳水产', store: '厦门四店', normalTime: '10:30前' },
+  { supplier: '蠔倍佳水产', store: '泉州一店', normalTime: '10:30前' },
+  { supplier: '蠔倍佳水产', store: '泉州二店', normalTime: '10:30前' },
+  { supplier: '蠔倍佳水产', store: '温州一店', normalTime: '7:30-8:30' },
+  { supplier: '蠔倍佳水产', store: '温州二店', normalTime: '8:30' },
+  { supplier: '蠔倍佳水产', store: '杭州一店', normalTime: '10:00前' },
+  { supplier: '蠔倍佳水产', store: '杭州二店', normalTime: '8:30' },
+  { supplier: '蠔倍佳水产', store: '乐清一店', normalTime: '10:30前' },
+]
+
 function formatDateTime(date = new Date()) {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
@@ -115,12 +199,55 @@ function calcDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: numb
   const dLng = toRadians(lng2 - lng1)
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRadians(lat1)) *
-      Math.cos(toRadians(lat2)) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2)
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2)
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
   return Math.round(R * c)
+}
+
+function normalizeTimeText(text: string) {
+  return text.replaceAll('：', ':').replace(/\s+/g, '')
+}
+
+function parseClockToMinutes(text: string) {
+  const normalized = normalizeTimeText(text)
+  const parts = normalized.split(':')
+  if (parts.length === 1) {
+    const hour = Number(parts[0])
+    if (Number.isNaN(hour)) return null
+    return hour * 60
+  }
+  const hour = Number(parts[0])
+  const minute = Number(parts[1])
+  if (Number.isNaN(hour) || Number.isNaN(minute)) return null
+  return hour * 60 + minute
+}
+
+function extractLatestMinutes(normalTime: string) {
+  const text = normalizeTimeText(normalTime)
+  if (!text) return null
+
+  if (text.includes('-')) {
+    const arr = text.split('-')
+    return parseClockToMinutes(arr[arr.length - 1])
+  }
+
+  if (text.endsWith('前')) {
+    return parseClockToMinutes(text.replace('前', ''))
+  }
+
+  return parseClockToMinutes(text)
+}
+
+function formatMinutesToText(totalMinutes: number | null) {
+  if (totalMinutes == null) return '-'
+  const h = Math.floor(totalMinutes / 60)
+  const m = totalMinutes % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+function getArrivalRule(supplier: string, store: string) {
+  return arrivalRules.find((item) => item.supplier === supplier && item.store === store) ?? null
 }
 
 const box: React.CSSProperties = {
@@ -152,6 +279,7 @@ const buttonStyle = (primary = true): React.CSSProperties => ({
 export default function App() {
   const [tab, setTab] = useState<TabKey>('driver')
   const [selectedStoreId, setSelectedStoreId] = useState('qz1')
+  const [storeLocked, setStoreLocked] = useState(false)
   const [supplier, setSupplier] = useState('')
   const [category, setCategory] = useState('')
   const [deliveryBatch, setDeliveryBatch] = useState('上午批次')
@@ -182,6 +310,10 @@ export default function App() {
       exceptionReason: '',
       exceptionRemark: '',
       status: '已打卡',
+      normalArrivalTime: '8:30',
+      latestArrivalTime: '08:30',
+      isLate: true,
+      lateMinutes: 113,
     },
     {
       id: 'REC-20260406-002',
@@ -197,12 +329,43 @@ export default function App() {
       exceptionReason: '信息填写错误',
       exceptionRemark: '批次信息补录',
       status: '异常待处理',
+      normalArrivalTime: '-',
+      latestArrivalTime: '-',
+      isLate: false,
+      lateMinutes: 0,
     },
   ])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const storeFromUrl = params.get('store')
+    if (!storeFromUrl) return
+
+    const matchedStore = stores.find((item) => item.id === storeFromUrl)
+    if (matchedStore) {
+      setSelectedStoreId(matchedStore.id)
+      setStoreLocked(true)
+    }
+  }, [])
 
   const selectedStore = useMemo(
     () => stores.find((s) => s.id === selectedStoreId) ?? stores[0],
     [selectedStoreId]
+  )
+
+  const currentRule = useMemo(() => {
+    if (!supplier || !selectedStore?.name) return null
+    return getArrivalRule(supplier, selectedStore.name)
+  }, [supplier, selectedStore])
+
+  const currentLatestMinutes = useMemo(() => {
+    if (!currentRule) return null
+    return extractLatestMinutes(currentRule.normalTime)
+  }, [currentRule])
+
+  const currentLatestTimeText = useMemo(
+    () => formatMinutesToText(currentLatestMinutes),
+    [currentLatestMinutes]
   )
 
   const canSubmit = !!supplier && !!category && geoPassed && photoUploaded
@@ -253,7 +416,13 @@ export default function App() {
   const handleCheckIn = () => {
     if (!canSubmit) return
 
-    const time = formatDateTime()
+    const now = new Date()
+    const time = formatDateTime(now)
+    const nowMinutes = now.getHours() * 60 + now.getMinutes()
+    const latestMinutes = currentLatestMinutes
+    const isLate = latestMinutes != null ? nowMinutes > latestMinutes : false
+    const lateMinutes = latestMinutes != null && isLate ? nowMinutes - latestMinutes : 0
+
     const rec: RecordItem = {
       id: `REC-${time.replace(/[-: ]/g, '').slice(0, 14)}`,
       date: todayStr(),
@@ -268,6 +437,10 @@ export default function App() {
       exceptionReason,
       exceptionRemark,
       status: exceptionReason ? '异常待处理' : '已打卡',
+      normalArrivalTime: currentRule?.normalTime ?? '-',
+      latestArrivalTime: currentLatestTimeText,
+      isLate,
+      lateMinutes,
     }
 
     setRecords((prev) => [rec, ...prev])
@@ -285,7 +458,26 @@ export default function App() {
   }
 
   const exportCsv = (period: ExportPeriod) => {
-    const headers = ['记录编号', '打卡日期', '打卡时间', '门店名称', '所属供应商', '送货品类', '定位通过', '距离(米)', '照片', '异常原因', '异常备注', '状态']
+    const headers = [
+      '记录编号',
+      '打卡日期',
+      '打卡时间',
+      '门店名称',
+      '所属供应商',
+      '送货品类',
+      '批次',
+      '定位通过',
+      '距离(米)',
+      '照片',
+      '正常到货时间',
+      '最晚到货时间',
+      '是否迟到',
+      '迟到分钟数',
+      '异常原因',
+      '异常备注',
+      '状态',
+    ]
+
     const rows = records.map((r) => [
       r.id,
       r.date,
@@ -293,9 +485,14 @@ export default function App() {
       r.store,
       r.supplier,
       r.category,
+      r.batch,
       r.geoPassed ? '是' : '否',
       r.distance,
       r.photoUploaded ? '已上传' : '未上传',
+      r.normalArrivalTime,
+      r.latestArrivalTime,
+      r.isLate ? '是' : '否',
+      r.lateMinutes,
       r.exceptionReason || '',
       r.exceptionRemark || '',
       r.status,
@@ -349,7 +546,7 @@ export default function App() {
         <div style={box}>
           <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>司机到店扫码打卡业务原型</div>
           <div style={{ color: '#475569', marginBottom: 16 }}>
-            这是完整门店与完整供应商版本，基于纯 React 可运行版整理。
+            当前版本已加入供应商正常到货时间、迟到判定和二维码门店参数绑定。
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, background: '#f1f5f9', padding: 6, borderRadius: 14, marginBottom: 20 }}>
@@ -385,11 +582,21 @@ export default function App() {
                 <div style={{ display: 'grid', gap: 14 }}>
                   <div>
                     <div style={{ marginBottom: 6, fontWeight: 600 }}>当前门店</div>
-                    <select style={inputStyle} value={selectedStoreId} onChange={(e) => setSelectedStoreId(e.target.value)}>
+                    <select
+                      style={inputStyle}
+                      value={selectedStoreId}
+                      onChange={(e) => setSelectedStoreId(e.target.value)}
+                      disabled={storeLocked}
+                    >
                       {stores.map((store) => (
                         <option key={store.id} value={store.id}>{store.name}</option>
                       ))}
                     </select>
+                    {storeLocked && (
+                      <div style={{ fontSize: 13, color: '#166534', marginTop: 6 }}>
+                        当前页面由门店二维码进入，门店已自动锁定。
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ ...box, background: '#f8fafc' }}>
@@ -428,6 +635,17 @@ export default function App() {
                     </select>
                   </div>
 
+                  <div style={{ ...box, background: '#f8fafc' }}>
+                    <div style={{ fontWeight: 700, marginBottom: 10 }}>正常到货时间规则</div>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      <div><span style={{ color: '#64748b' }}>正常到货时间：</span>{currentRule?.normalTime ?? '未配置'}</div>
+                      <div><span style={{ color: '#64748b' }}>最晚到货时间：</span>{currentRule ? currentLatestTimeText : '未配置'}</div>
+                      <div style={{ fontSize: 13, color: '#64748b' }}>
+                        判定规则：单一时间按该时间截止；时间段按最后时间截止；“前”按该时间截止。
+                      </div>
+                    </div>
+                  </div>
+
                   <div style={{ ...box }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
                       <div>
@@ -462,7 +680,19 @@ export default function App() {
                     </div>
 
                     {locationMessage && (
-                      <div style={{ fontSize: 14, padding: 10, borderRadius: 10, background: geoPassed ? '#f0fdf4' : '#fffbeb', color: geoPassed ? '#166534' : '#92400e' }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          fontSize: 14,
+                          padding: 10,
+                          borderRadius: 10,
+                          background: geoPassed ? '#f0fdf4' : '#fffbeb',
+                          color: geoPassed ? '#166534' : '#92400e',
+                        }}
+                      >
+                        {geoPassed ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
                         {locationMessage}
                       </div>
                     )}
@@ -479,7 +709,9 @@ export default function App() {
                   </div>
 
                   <div style={{ ...box }}>
-                    <div style={{ fontWeight: 700, marginBottom: 10 }}>异常原因填写</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, marginBottom: 10 }}>
+                      <CircleAlert size={16} /> 异常原因填写
+                    </div>
                     <div style={{ display: 'grid', gap: 12, gridTemplateColumns: '1fr 1fr' }}>
                       <div>
                         <div style={{ marginBottom: 6, fontWeight: 600 }}>异常原因</div>
@@ -518,14 +750,14 @@ export default function App() {
 
               <div style={{ ...box, padding: 20 }}>
                 <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 10 }}>当前版本规则说明</div>
-                <div style={{ color: '#64748b', marginBottom: 12 }}>完整门店与供应商版本，继续沿用不报错结构。</div>
+                <div style={{ color: '#64748b', marginBottom: 12 }}>已加入正常到货时间与迟到判定逻辑。</div>
                 <ul style={{ paddingLeft: 18, margin: 0, lineHeight: 1.8, color: '#334155' }}>
-                  <li>所有门店都按收货地址处理</li>
+                  <li>单一时间，超过该时间即视为迟到</li>
+                  <li>时间段，超过最后时间即视为迟到</li>
+                  <li>“前”，超过该时间即视为迟到</li>
                   <li>所有门店定位范围统一为 100 米</li>
-                  <li>已删除门店确认流程</li>
                   <li>不记录司机姓名和车牌号</li>
-                  <li>支持后台导出记录</li>
-                  <li>缺经纬度门店会拦截定位校验</li>
+                  <li>支持后台导出迟到字段</li>
                 </ul>
               </div>
             </div>
@@ -562,7 +794,7 @@ export default function App() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#f8fafc' }}>
-                    {['记录编号', '门店', '供应商', '打卡时间', '状态'].map((h) => (
+                    {['记录编号', '门店', '供应商', '打卡时间', '最晚到货时间', '是否迟到', '状态'].map((h) => (
                       <th key={h} style={{ textAlign: 'left', padding: 12, borderBottom: '1px solid #e2e8f0' }}>{h}</th>
                     ))}
                   </tr>
@@ -574,6 +806,10 @@ export default function App() {
                       <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.store}</td>
                       <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.supplier}</td>
                       <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.time}</td>
+                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.latestArrivalTime}</td>
+                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', color: r.isLate ? '#dc2626' : '#166534' }}>
+                        {r.isLate ? `迟到 ${r.lateMinutes} 分钟` : '未迟到'}
+                      </td>
                       <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.status}</td>
                     </tr>
                   ))}
@@ -588,13 +824,14 @@ export default function App() {
                 <CheckCircle2 size={36} />
               </div>
               <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 10 }}>打卡成功，已记录到店时间</div>
-              <div style={{ color: '#64748b', marginBottom: 18 }}>成功提交后会自动新增一条后台记录。</div>
+              <div style={{ color: '#64748b', marginBottom: 18 }}>成功提交后会自动新增一条后台记录，并写入迟到判定。</div>
               <div style={{ ...box, background: '#f8fafc', textAlign: 'left', marginBottom: 18 }}>
                 <div><span style={{ color: '#64748b' }}>门店：</span>{lastRecord?.store || selectedStore.name}</div>
                 <div><span style={{ color: '#64748b' }}>所属供应商：</span>{lastRecord?.supplier || '-'}</div>
                 <div><span style={{ color: '#64748b' }}>打卡时间：</span>{lastRecord?.time || formatDateTime()}</div>
-                <div><span style={{ color: '#64748b' }}>现场照片：</span>{lastRecord?.photoUploaded ? '已上传' : '未上传'}</div>
-                <div><span style={{ color: '#64748b' }}>异常状态：</span>{lastRecord?.exceptionReason || '无异常'}</div>
+                <div><span style={{ color: '#64748b' }}>正常到货时间：</span>{lastRecord?.normalArrivalTime || '-'}</div>
+                <div><span style={{ color: '#64748b' }}>最晚到货时间：</span>{lastRecord?.latestArrivalTime || '-'}</div>
+                <div><span style={{ color: '#64748b' }}>迟到状态：</span>{lastRecord ? (lastRecord.isLate ? `迟到 ${lastRecord.lateMinutes} 分钟` : '未迟到') : '-'}</div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
                 <button style={buttonStyle(false)} onClick={() => setTab('driver')}>继续打卡</button>
@@ -609,7 +846,25 @@ export default function App() {
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
                   <tr style={{ background: '#f8fafc' }}>
-                    {['记录编号', '打卡日期', '打卡时间', '门店名称', '所属供应商', '送货品类', '定位通过', '距离(米)', '照片', '异常原因', '异常备注', '状态'].map((h) => (
+                    {[
+                      '记录编号',
+                      '打卡日期',
+                      '打卡时间',
+                      '门店名称',
+                      '所属供应商',
+                      '送货品类',
+                      '批次',
+                      '定位通过',
+                      '距离(米)',
+                      '照片',
+                      '正常到货时间',
+                      '最晚到货时间',
+                      '是否迟到',
+                      '迟到分钟数',
+                      '异常原因',
+                      '异常备注',
+                      '状态',
+                    ].map((h) => (
                       <th key={h} style={{ textAlign: 'left', padding: 12, borderBottom: '1px solid #e2e8f0' }}>{h}</th>
                     ))}
                   </tr>
@@ -623,9 +878,16 @@ export default function App() {
                       <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.store}</td>
                       <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.supplier}</td>
                       <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.category}</td>
+                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.batch}</td>
                       <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.geoPassed ? '是' : '否'}</td>
                       <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.distance}</td>
                       <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.photoUploaded ? '已上传' : '未上传'}</td>
+                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.normalArrivalTime}</td>
+                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.latestArrivalTime}</td>
+                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0', color: r.isLate ? '#dc2626' : '#166534' }}>
+                        {r.isLate ? '是' : '否'}
+                      </td>
+                      <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.lateMinutes}</td>
                       <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.exceptionReason || '-'}</td>
                       <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.exceptionRemark || '-'}</td>
                       <td style={{ padding: 12, borderBottom: '1px solid #e2e8f0' }}>{r.status}</td>
